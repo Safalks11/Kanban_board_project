@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import '../../model/task_model.dart';
 
 class TaskCard extends ConsumerWidget {
-  final Task task;
+  final TaskModel task;
 
   const TaskCard({super.key, required this.task});
 

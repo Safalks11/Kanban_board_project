@@ -5,7 +5,7 @@ import 'task_card.dart';
 class TaskColumn extends StatelessWidget {
   final String title;
   final String emoji;
-  final List<Task> tasks;
+  final List<TaskModel> tasks;
   final TaskStatus status;
   final Function(String, TaskStatus) onTaskMoved;
 
@@ -65,7 +65,7 @@ class TaskColumn extends StatelessWidget {
           ),
           // Tasks
           Expanded(
-            child: DragTarget<Task>(
+            child: DragTarget<TaskModel>(
               onAcceptWithDetails: (details) {
                 final task = details.data;
                 if (task.status != status) {
@@ -105,7 +105,7 @@ class TaskColumn extends StatelessWidget {
                               padding: EdgeInsets.only(
                                 bottom: index < tasks.length - 1 ? 8.0 : 0.0,
                               ),
-                              child: Draggable<Task>(
+                              child: Draggable<TaskModel>(
                                 data: task,
                                 feedback: Material(
                                   elevation: 8,

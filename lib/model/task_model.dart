@@ -26,7 +26,7 @@ extension TaskStatusExtension on TaskStatus {
   }
 }
 
-class Task {
+class TaskModel {
   final String id;
   final String title;
   final String description;
@@ -39,7 +39,7 @@ class Task {
   final bool hasConflict;
   final DateTime createdAt;
 
-  const Task({
+  const TaskModel({
     required this.id,
     required this.title,
     required this.description,
@@ -53,7 +53,7 @@ class Task {
     required this.createdAt,
   });
 
-  Task copyWith({
+  TaskModel copyWith({
     String? id,
     String? title,
     String? description,
@@ -66,7 +66,7 @@ class Task {
     bool? hasConflict,
     DateTime? createdAt,
   }) {
-    return Task(
+    return TaskModel(
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
@@ -97,7 +97,7 @@ class Task {
     };
   }
 
-  factory Task.fromJson(Map<String, dynamic> json) {
+  factory TaskModel.fromJson(Map<String, dynamic> json) {
     DateTime updatedAt;
     if (json['updatedAt'] is Timestamp) {
       updatedAt = (json['updatedAt'] as Timestamp).toDate();
@@ -112,7 +112,7 @@ class Task {
       createdAt = DateTime.now();
     }
 
-    return Task(
+    return TaskModel(
       id: json['id'] as String,
       title: json['title'] as String,
       description: json['description'] as String,
@@ -130,14 +130,14 @@ class Task {
     );
   }
 
-  factory Task.create({
+  factory TaskModel.create({
     required String title,
     required String description,
     required String assignedTo,
     required String updatedBy,
   }) {
     final now = DateTime.now();
-    return Task(
+    return TaskModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
       description: description,

@@ -5,7 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../model/task_model.dart';
 
 class TaskDetailDialog extends ConsumerStatefulWidget {
-  final Task? task;
+  final TaskModel? task;
 
   const TaskDetailDialog({super.key, this.task});
 
