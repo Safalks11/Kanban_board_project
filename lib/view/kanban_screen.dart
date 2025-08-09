@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kanban_board_project/view/widgets/kanban_board.dart';
+import 'package:kanban_board_project/view/widgets/task_detail_dialog.dart';
 
 class KanbanScreen extends ConsumerStatefulWidget {
   const KanbanScreen({super.key});
@@ -99,10 +100,14 @@ class _KanbanScreenState extends ConsumerState<KanbanScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: () => _showCreateTaskDialog(context),
         icon: const Icon(Icons.add),
         label: const Text('New Task'),
       ),
     );
   }
+}
+
+void _showCreateTaskDialog(BuildContext context) {
+  showDialog(context: context, builder: (context) => const TaskDetailDialog());
 }

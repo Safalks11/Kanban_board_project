@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "334246308287",
+    "project_id": "kanban-board-3729b",
+    "storage_bucket": "kanban-board-3729b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:334246308287:android:a3f3c5db58415ff756990a",
+        "android_client_info": {
+          "package_name": "com.safal.kanban_board"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2nTAmoGIrsJP625WI7i882BYfyOMm5WQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:334246308287:android:f6e166bf5889e16456990a",
+        "android_client_info": {
+          "package_name": "com.safal.kanban_board_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2nTAmoGIrsJP625WI7i882BYfyOMm5WQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

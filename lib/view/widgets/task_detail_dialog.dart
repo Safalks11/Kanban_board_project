@@ -49,7 +49,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Icon(_isEditing ? Icons.edit : Icons.add, size: 24, color: Colors.blue),
@@ -67,7 +66,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
             ),
             const SizedBox(height: 24),
 
-            // Form
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
@@ -88,7 +86,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Description
                     const Text(
                       'Description',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -104,7 +101,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Assigned To
                     const Text(
                       'Assigned To',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -119,7 +115,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Status
                     const Text(
                       'Status',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -150,7 +145,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Attachments
                     if (widget.task != null) ...[
                       Row(
                         children: [
@@ -193,7 +187,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
               ),
             ),
 
-            // Actions
             const SizedBox(height: 24),
             Row(
               children: [
@@ -205,6 +198,10 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                 const SizedBox(width: 16),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _saveTask,
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStatePropertyAll(Colors.green),
+                    foregroundColor: WidgetStatePropertyAll(Colors.white),
+                  ),
                   child: Text(_isEditing ? 'Update' : 'Create'),
                 ),
               ],
@@ -236,7 +233,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
 
   Widget _getAttachmentIcon(String attachment) {
     if (attachment.contains('http')) {
-      // Remote file
       if (attachment.contains('.pdf')) {
         return const Icon(Icons.picture_as_pdf, color: Colors.red);
       } else if (attachment.contains('.jpg') ||
@@ -247,7 +243,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
         return const Icon(Icons.attach_file, color: Colors.grey);
       }
     } else {
-      // Local file
       return const Icon(Icons.file_present, color: Colors.orange);
     }
   }
@@ -268,7 +263,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
     }
 
     if (_isEditing && widget.task != null) {
-      // Update existing task
       final updatedTask = widget.task!.copyWith(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
@@ -290,7 +284,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'],
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'],
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -300,7 +294,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
           }
         }
 
-        // Refresh the dialog
         setState(() {});
 
         messenger.showSnackBar(
