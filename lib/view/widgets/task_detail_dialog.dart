@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../model/task_model.dart';
+import 'package:kanban_board_project/model/task_model.dart';
+
+import '../../providers/task_provider.dart';
 
 class TaskDetailDialog extends ConsumerStatefulWidget {
   final TaskModel? task;
@@ -49,6 +51,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Row(
               children: [
                 Icon(_isEditing ? Icons.edit : Icons.add, size: 24, color: Colors.blue),
@@ -66,6 +69,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
             ),
             const SizedBox(height: 24),
 
+            // Form
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
@@ -86,6 +90,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Description
                     const Text(
                       'Description',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -101,6 +106,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Assigned To
                     const Text(
                       'Assigned To',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -115,6 +121,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Status
                     const Text(
                       'Status',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -123,7 +130,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     DropdownButtonFormField<TaskStatus>(
                       value: _selectedStatus,
                       decoration: const InputDecoration(border: OutlineInputBorder()),
-                      items: TaskStatus.values.map((status) {
+                      items: (_isEditing ? TaskStatus.values : [TaskStatus.todo]).map((status) {
                         return DropdownMenuItem(
                           value: status,
                           child: Row(
@@ -145,6 +152,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                     ),
                     const SizedBox(height: 24),
 
+                    // Attachments
                     if (widget.task != null) ...[
                       Row(
                         children: [
@@ -187,6 +195,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
               ),
             ),
 
+            // Actions
             const SizedBox(height: 24),
             Row(
               children: [
@@ -198,10 +207,6 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
                 const SizedBox(width: 16),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _saveTask,
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStatePropertyAll(Colors.green),
-                    foregroundColor: WidgetStatePropertyAll(Colors.white),
-                  ),
                   child: Text(_isEditing ? 'Update' : 'Create'),
                 ),
               ],
@@ -233,6 +238,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
 
   Widget _getAttachmentIcon(String attachment) {
     if (attachment.contains('http')) {
+      // Remote file
       if (attachment.contains('.pdf')) {
         return const Icon(Icons.picture_as_pdf, color: Colors.red);
       } else if (attachment.contains('.jpg') ||
@@ -243,6 +249,7 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
         return const Icon(Icons.attach_file, color: Colors.grey);
       }
     } else {
+      // Local file
       return const Icon(Icons.file_present, color: Colors.orange);
     }
   }
@@ -263,19 +270,40 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
     }
 
     if (_isEditing && widget.task != null) {
+      // Update existing task
       final updatedTask = widget.task!.copyWith(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         assignedTo: _assignedToController.text.trim(),
         status: _selectedStatus,
       );
-    } else {}
+
+      ref.read(taskNotifierProvider.notifier).updateTask(updatedTask);
+    } else {
+      // Create new task
+      ref
+          .read(taskNotifierProvider.notifier)
+          .createTask(
+            title: _titleController.text.trim(),
+            description: _descriptionController.text.trim(),
+            assignedTo: _assignedToController.text.trim(),
+            status: _selectedStatus,
+          );
+    }
 
     Navigator.of(context).pop();
   }
 
   Future<void> _pickFiles() async {
     final messenger = ScaffoldMessenger.of(context);
+
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('File uploads require a paid Firebase Storage plan.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+
     try {
       setState(() {
         _isLoading = true;
@@ -284,16 +312,18 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'],
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'],
       );
 
       if (result != null && result.files.isNotEmpty) {
         for (final file in result.files) {
           if (file.path != null) {
             final fileObj = File(file.path!);
+            await ref.read(taskNotifierProvider.notifier).addAttachment(widget.task!.id, fileObj);
           }
         }
 
+        // Refresh the dialog
         setState(() {});
 
         messenger.showSnackBar(
@@ -316,6 +346,9 @@ class _TaskDetailDialogState extends ConsumerState<TaskDetailDialog> {
 
   void _removeAttachment(String attachmentId) {
     if (widget.task != null) {
+      ref.read(taskNotifierProvider.notifier).removeAttachment(widget.task!.id, attachmentId);
+      setState(() {});
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Attachment removed')));

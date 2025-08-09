@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controller/connectivity_service.dart';
 import '../controller/firebase_service.dart';
@@ -54,15 +55,50 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
       } else {
         state = AsyncValue.data(offlineTasks);
       }
+      ref.invalidate(syncStatusProvider);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
+      ref.invalidate(syncStatusProvider);
     }
+  }
+
+  Future<void> _handleTaskOperation({
+    required TaskModel task,
+    required String action,
+    required Future<void> Function() firebaseAction,
+    String? originalTaskIdForDelete,
+  }) async {
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isConnected = connectivityService.isConnected;
+
+    if (action == 'delete') {
+      await ref.read(offlineStorageServiceProvider).deleteTask(originalTaskIdForDelete ?? task.id);
+    } else {
+      await ref.read(offlineStorageServiceProvider).saveTask(task);
+    }
+
+    if (!isConnected) {
+      await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: action);
+    } else {
+      try {
+        await firebaseAction();
+        if (action != 'delete') {
+          final syncedTask = task.copyWith(isSynced: true);
+          await ref.read(offlineStorageServiceProvider).saveTask(syncedTask);
+        }
+      } catch (e) {
+        debugPrint('Firebase $action task failed: $e');
+        await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: action);
+      }
+    }
+    await _loadTasks();
   }
 
   Future<void> createTask({
     required String title,
     required String description,
     required String assignedTo,
+    required TaskStatus status,
   }) async {
     final currentUserId = ref.read(firebaseServiceProvider).currentUserId;
     if (currentUserId == null) throw Exception('User not authenticated');
@@ -74,25 +110,11 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
       updatedBy: currentUserId,
     );
 
-    await ref.read(offlineStorageServiceProvider).saveTask(task);
-
-    final connectivityService = ref.read(connectivityServiceProvider);
-    final isConnected = connectivityService.isConnected;
-
-    if (!isConnected) {
-      await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: 'create');
-    } else {
-      try {
-        await ref.read(firebaseServiceProvider).createTask(task);
-        final syncedTask = task.copyWith(isSynced: true);
-        await ref.read(offlineStorageServiceProvider).saveTask(syncedTask);
-      } catch (e) {
-        debugPrint('Firebase create task failed: $e');
-        await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: 'create');
-      }
-    }
-
-    await _loadTasks();
+    await _handleTaskOperation(
+      task: task,
+      action: 'create',
+      firebaseAction: () => ref.read(firebaseServiceProvider).createTask(task),
+    );
   }
 
   Future<void> updateTask(TaskModel task) async {
@@ -105,65 +127,31 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
       isSynced: false,
     );
 
-    await ref.read(offlineStorageServiceProvider).saveTask(updatedTask);
-
-    final connectivityService = ref.read(connectivityServiceProvider);
-    final isConnected = connectivityService.isConnected;
-
-    if (!isConnected) {
-      await ref.read(offlineStorageServiceProvider).addToSyncQueue(updatedTask, action: 'update');
-    } else {
-      try {
-        await ref.read(firebaseServiceProvider).updateTask(updatedTask);
-        final syncedTask = updatedTask.copyWith(isSynced: true);
-        await ref.read(offlineStorageServiceProvider).saveTask(syncedTask);
-      } catch (e) {
-        debugPrint('Firebase update task failed: $e');
-        await ref.read(offlineStorageServiceProvider).addToSyncQueue(updatedTask, action: 'update');
-      }
-    }
-
-    await _loadTasks();
+    await _handleTaskOperation(
+      task: updatedTask,
+      action: 'update',
+      firebaseAction: () => ref.read(firebaseServiceProvider).updateTask(updatedTask),
+    );
   }
 
   Future<void> deleteTask(String taskId) async {
-    await ref.read(offlineStorageServiceProvider).deleteTask(taskId);
+    final placeholderTaskForQueue = TaskModel(
+      id: taskId,
+      title: '',
+      description: '',
+      status: TaskStatus.todo,
+      assignedTo: '',
+      updatedAt: DateTime.now(),
+      updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
+      createdAt: DateTime.now(),
+    );
 
-    final connectivityService = ref.read(connectivityServiceProvider);
-    final isConnected = connectivityService.isConnected;
-
-    if (!isConnected) {
-      final task = TaskModel(
-        id: taskId,
-        title: '',
-        description: '',
-        status: TaskStatus.todo,
-        assignedTo: '',
-        updatedAt: DateTime.now(),
-        updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
-        createdAt: DateTime.now(),
-      );
-      await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: 'delete');
-    } else {
-      try {
-        await ref.read(firebaseServiceProvider).deleteTask(taskId);
-      } catch (e) {
-        debugPrint('Firebase delete task failed: $e');
-        final task = TaskModel(
-          id: taskId,
-          title: '',
-          description: '',
-          status: TaskStatus.todo,
-          assignedTo: '',
-          updatedAt: DateTime.now(),
-          updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
-          createdAt: DateTime.now(),
-        );
-        await ref.read(offlineStorageServiceProvider).addToSyncQueue(task, action: 'delete');
-      }
-    }
-
-    await _loadTasks();
+    await _handleTaskOperation(
+      task: placeholderTaskForQueue,
+      action: 'delete',
+      firebaseAction: () => ref.read(firebaseServiceProvider).deleteTask(taskId),
+      originalTaskIdForDelete: taskId,
+    );
   }
 
   Future<void> moveTask(String taskId, TaskStatus newStatus) async {
@@ -172,13 +160,7 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
 
     if (taskIndex != -1) {
       final task = tasks[taskIndex];
-      final updatedTask = task.copyWith(
-        status: newStatus,
-        updatedAt: DateTime.now(),
-        updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
-        isSynced: false,
-      );
-
+      final updatedTask = task.copyWith(status: newStatus);
       await updateTask(updatedTask);
     }
   }
@@ -194,51 +176,38 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
       await ref.read(offlineStorageServiceProvider).addPendingUpload(attachment, taskId);
 
       final updatedAttachments = [...task.attachments, attachment.id];
-      final updatedTask = task.copyWith(
-        attachments: updatedAttachments,
-        updatedAt: DateTime.now(),
-        updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
-        isSynced: false,
-      );
+      final updatedTask = task.copyWith(attachments: updatedAttachments);
 
       await updateTask(updatedTask);
 
       final connectivityService = ref.read(connectivityServiceProvider);
       if (connectivityService.isConnected) {
         try {
-          final isStorageAvailable = await ref.read(firebaseServiceProvider).isStorageAvailable();
-          if (isStorageAvailable) {
-            final downloadUrl = await ref
-                .read(firebaseServiceProvider)
-                .uploadFile(
-                  file,
-                  taskId,
-                  onProgress: (progress) {
-                    debugPrint('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
-                  },
-                );
+          final downloadUrl = await ref
+              .read(firebaseServiceProvider)
+              .uploadFile(
+                file,
+                taskId,
+                onProgress: (progress) {
+                  debugPrint('Upload progress: \${(progress * 100).toStringAsFixed(1)}%');
+                },
+              );
 
-            final finalTask = tasks[taskIndex];
-            final finalAttachments = finalTask.attachments.map((url) {
+          final currentTasks = state.value ?? [];
+          final currentTaskIndex = currentTasks.indexWhere((t) => t.id == taskId);
+          if (currentTaskIndex != -1) {
+            final taskAfterUpload = currentTasks[currentTaskIndex];
+            final finalAttachments = taskAfterUpload.attachments.map((url) {
               if (url == attachment.id) return downloadUrl;
               return url;
             }).toList();
 
-            final finalUpdatedTask = finalTask.copyWith(
-              attachments: finalAttachments,
-              isSynced: false,
-            );
-
+            final finalUpdatedTask = taskAfterUpload.copyWith(attachments: finalAttachments);
             await updateTask(finalUpdatedTask);
-
-            await ref.read(offlineStorageServiceProvider).removePendingUpload(attachment.id);
-          } else {
-            debugPrint(
-              'Firebase Storage not available, file will be uploaded when storage is accessible',
-            );
           }
+          await ref.read(offlineStorageServiceProvider).removePendingUpload(attachment.id);
         } catch (e) {
-          debugPrint('Upload failed: $e');
+          debugPrint('Upload failed: $e. Handled by FirebaseService.');
         }
       }
     }
@@ -251,13 +220,7 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
     if (taskIndex != -1) {
       final task = tasks[taskIndex];
       final updatedAttachments = task.attachments.where((id) => id != attachmentId).toList();
-      final updatedTask = task.copyWith(
-        attachments: updatedAttachments,
-        updatedAt: DateTime.now(),
-        updatedBy: ref.read(firebaseServiceProvider).currentUserId ?? '',
-        isSynced: false,
-      );
-
+      final updatedTask = task.copyWith(attachments: updatedAttachments);
       await updateTask(updatedTask);
     }
   }
@@ -284,17 +247,16 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
 
           await ref.read(offlineStorageServiceProvider).removeFromSyncQueue(task.id);
         } catch (e) {
-          debugPrint('Sync failed for task ${task.id}: $e');
+          debugPrint('Sync failed for task \${task.id}: $e');
         }
       }
 
       await _processPendingUploads();
-
       await ref.read(offlineStorageServiceProvider).setLastSync(DateTime.now());
-
       await _loadTasks();
     } catch (e) {
-      debugPrint('Sync failed: $e');
+      debugPrint('Sync process failed: $e');
+      ref.invalidate(syncStatusProvider);
     }
   }
 
@@ -307,7 +269,7 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
       final retryCount = uploadData['retryCount'] as int? ?? 0;
 
       if (retryCount >= 3) {
-        debugPrint('Max retry count reached for attachment ${attachment.id}');
+        debugPrint('Max retry count reached for attachment \${attachment.id}');
         continue;
       }
 
@@ -317,64 +279,74 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
           if (await file.exists()) {
             final downloadUrl = await ref.read(firebaseServiceProvider).uploadFile(file, taskId);
 
-            final tasks = state.value ?? [];
-            final taskIndex = tasks.indexWhere((task) => task.id == taskId);
+            final currentTasks = state.value ?? [];
+            final taskIndex = currentTasks.indexWhere((task) => task.id == taskId);
 
             if (taskIndex != -1) {
-              final task = tasks[taskIndex];
+              final task = currentTasks[taskIndex];
               final updatedAttachments = task.attachments.map((url) {
                 if (url == attachment.id) return downloadUrl;
                 return url;
               }).toList();
-
-              final updatedTask = task.copyWith(attachments: updatedAttachments, isSynced: false);
-
+              final updatedTask = task.copyWith(attachments: updatedAttachments);
               await updateTask(updatedTask);
             }
-
             await ref.read(offlineStorageServiceProvider).removePendingUpload(attachment.id);
           } else {
             await ref.read(offlineStorageServiceProvider).removePendingUpload(attachment.id);
           }
         } catch (e) {
-          debugPrint('Upload failed for attachment ${attachment.id}: $e');
+          debugPrint(
+            'Upload failed for attachment \${attachment.id}: $e. Handled by FirebaseService.',
+          );
           await ref
               .read(offlineStorageServiceProvider)
               .updatePendingUploadRetryCount(attachment.id, retryCount + 1);
         }
       }
     }
+    ref.invalidate(syncStatusProvider);
   }
 
   Future<void> _syncWithFirebase() async {
     try {
       final firebaseTasks = await ref.read(firebaseServiceProvider).getTasks();
-      final offlineTasks = await ref.read(offlineStorageServiceProvider).loadTasks();
+      final offlineTasksResult = await ref.read(offlineStorageServiceProvider).loadTasks();
 
       final mergedTasks = <TaskModel>[];
       final processedIds = <String>{};
 
+      final List<TaskModel> offlineTasks = List.from(offlineTasksResult);
+
       for (final firebaseTask in firebaseTasks) {
-        final offlineTask = offlineTasks.firstWhere(
-          (task) => task.id == firebaseTask.id,
-          orElse: () => firebaseTask,
-        );
-
-        if (offlineTask.id != firebaseTask.id) {
-          mergedTasks.add(firebaseTask);
-        } else {
-          if (offlineTask.updatedAt != firebaseTask.updatedAt) {
-            final resolvedTask = await ref
-                .read(firebaseServiceProvider)
-                .resolveConflict(offlineTask, firebaseTask);
-            mergedTasks.add(resolvedTask);
-
-            await ref.read(offlineStorageServiceProvider).saveConflict(offlineTask, firebaseTask);
-          } else {
-            mergedTasks.add(firebaseTask);
-          }
+        TaskModel? offlineMatch;
+        try {
+          offlineMatch = offlineTasks.firstWhere((task) => task.id == firebaseTask.id);
+        } catch (e) {
+          offlineMatch = null;
         }
 
+        if (offlineMatch == null) {
+          mergedTasks.add(firebaseTask);
+        } else {
+          if (offlineMatch.updatedAt.isAfter(firebaseTask.updatedAt)) {
+            if (!offlineMatch.isSynced) {
+              mergedTasks.add(offlineMatch);
+            } else {
+              debugPrint(
+                "Conflict detected for task \${firebaseTask.id}. Offline newer but both marked synced. Taking Firebase version.",
+              );
+              mergedTasks.add(firebaseTask);
+              await ref
+                  .read(offlineStorageServiceProvider)
+                  .saveConflict(offlineMatch, firebaseTask);
+            }
+          } else if (firebaseTask.updatedAt.isAfter(offlineMatch.updatedAt)) {
+            mergedTasks.add(firebaseTask);
+          } else {
+            mergedTasks.add(firebaseTask.isSynced ? firebaseTask : offlineMatch);
+          }
+        }
         processedIds.add(firebaseTask.id);
       }
 
@@ -383,7 +355,6 @@ class TaskNotifier extends StateNotifier<AsyncValue<List<TaskModel>>> {
           mergedTasks.add(offlineTask);
         }
       }
-
       await ref.read(offlineStorageServiceProvider).saveTasks(mergedTasks);
     } catch (e) {
       debugPrint('Sync with Firebase failed: $e');
@@ -418,15 +389,38 @@ final tasksByStatusProvider = Provider.family<List<TaskModel>, TaskStatus>((ref,
   );
 });
 
-final syncStatusProvider = FutureProvider<Map<String, int>>((ref) async {
+final syncStatusProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  debugPrint('[SyncStatusProvider] Re-evaluating...'); // Log start
+
+  final asyncConnectionStatus = ref.watch(connectionStatusProvider);
+  final isConnected = asyncConnectionStatus.when(
+    data: (status) {
+      debugPrint('[SyncStatusProvider] Connection status from data: $status');
+      return status;
+    },
+    loading: () {
+      debugPrint('[SyncStatusProvider] Connection status is loading, assuming false.');
+      return false;
+    },
+    error: (err, stack) {
+      debugPrint('[SyncStatusProvider] Connection status error ($err), assuming false.');
+      return false;
+    },
+  );
+
+  debugPrint('[SyncStatusProvider] Determined isConnected: $isConnected');
+
   final taskNotifier = ref.read(taskNotifierProvider.notifier);
   final unsyncedCount = await taskNotifier.getUnsyncedTasksCount();
   final pendingUploadsCount = await taskNotifier.getPendingUploadsCount();
   final conflictsCount = await taskNotifier.getConflictsCount();
 
-  return {
+  final result = {
+    'isConnected': isConnected,
     'unsynced': unsyncedCount,
     'pendingUploads': pendingUploadsCount,
     'conflicts': conflictsCount,
   };
+  debugPrint('[SyncStatusProvider] Evaluation complete. Result: $result'); // Log end
+  return result;
 });

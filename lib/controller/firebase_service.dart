@@ -107,18 +107,13 @@ class FirebaseService {
   }
 
   TaskModel _mergeTasks(TaskModel localTask, TaskModel remoteTask) {
+    final bool localIsNewer = localTask.updatedAt.isAfter(remoteTask.updatedAt);
     final mergedTask = localTask.copyWith(
-      title: localTask.updatedAt.isAfter(remoteTask.updatedAt) ? localTask.title : remoteTask.title,
-      description: localTask.updatedAt.isAfter(remoteTask.updatedAt)
-          ? localTask.description
-          : remoteTask.description,
-      status: localTask.updatedAt.isAfter(remoteTask.updatedAt)
-          ? localTask.status
-          : remoteTask.status,
-      assignedTo: localTask.updatedAt.isAfter(remoteTask.updatedAt)
-          ? localTask.assignedTo
-          : remoteTask.assignedTo,
-      attachments: [...localTask.attachments, ...remoteTask.attachments].toSet().toList(),
+      title: localIsNewer ? localTask.title : remoteTask.title,
+      description: localIsNewer ? localTask.description : remoteTask.description,
+      status: localIsNewer ? localTask.status : remoteTask.status,
+      assignedTo: localIsNewer ? localTask.assignedTo : remoteTask.assignedTo,
+      attachments: {...localTask.attachments, ...remoteTask.attachments}.toSet().toList(),
       updatedAt: DateTime.now(),
       updatedBy: currentUserId!,
       hasConflict: false,
@@ -126,19 +121,6 @@ class FirebaseService {
     );
 
     return mergedTask;
-  }
-
-  Future<bool> isStorageAvailable() async {
-    if (_storage == null) return false;
-    if (currentUserId == null) return false;
-
-    try {
-      _storage.ref().child('test-connection');
-      return true;
-    } catch (e) {
-      debugPrint('Firebase Storage not accessible: $e');
-      return false;
-    }
   }
 
   Future<String> uploadFile(File file, String taskId, {Function(double)? onProgress}) async {
@@ -150,12 +132,6 @@ class FirebaseService {
     try {
       if (!await file.exists()) {
         throw Exception('File does not exist: ${file.path}');
-      }
-
-      if (!await isStorageAvailable()) {
-        throw Exception(
-          'Firebase Storage is not accessible. Please check your configuration and permissions.',
-        );
       }
 
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
@@ -179,29 +155,23 @@ class FirebaseService {
       debugPrint('Download URL obtained: $downloadUrl');
 
       return downloadUrl;
+    } on FirebaseException catch (e) {
+      debugPrint('Firebase Storage upload failed: ${e.code} - ${e.message}');
+      switch (e.code) {
+        case 'permission-denied':
+          throw Exception(
+            'Permission denied. Please check Firebase Storage rules. Users must be authenticated to upload files.',
+          );
+        case 'object-not-found':
+        case 'bucket-not-found':
+          throw Exception(
+            'Storage bucket/object not found or network error. Please verify:\n1. Firebase Storage is enabled in your project\n2. Storage bucket is properly configured\n3. Internet connection is available',
+          );
+        default:
+          throw Exception('Firebase Storage upload failed: ${e.message}');
+      }
     } catch (e) {
       debugPrint('Firebase Storage upload failed: $e');
-
-      if (e.toString().contains('403') || e.toString().contains('permission')) {
-        throw Exception(
-          'Permission denied. Please check Firebase Storage rules. Users must be authenticated to upload files.',
-        );
-      }
-
-      if (e.toString().contains('network') ||
-          e.toString().contains('404') ||
-          e.toString().contains('object-not-found')) {
-        throw Exception(
-          'Storage bucket not found or network error. Please verify:\n1. Firebase Storage is enabled in your project\n2. Storage bucket is properly configured\n3. Internet connection is available',
-        );
-      }
-
-      if (e.toString().contains('bucket') || e.toString().contains('storage')) {
-        throw Exception(
-          'Firebase Storage bucket error. Please check your Firebase project configuration.',
-        );
-      }
-
       rethrow;
     }
   }

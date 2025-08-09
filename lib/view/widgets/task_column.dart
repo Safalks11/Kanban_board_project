@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../model/task_model.dart';
+import 'package:kanban_board_project/model/task_model.dart';
 import 'task_card.dart';
 
 class TaskColumn extends StatelessWidget {
@@ -30,7 +30,7 @@ class TaskColumn extends StatelessWidget {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: const BorderRadius.only(
@@ -90,13 +90,14 @@ class TaskColumn extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.inbox_outlined, size: 48, color: Colors.grey),
+                              Icon(Icons.inbox_outlined, size: 40, color: Colors.grey),
                               SizedBox(height: 8),
                               Text('No tasks', style: TextStyle(color: Colors.grey, fontSize: 16)),
                             ],
                           ),
                         )
                       : ListView.builder(
+                          primary: false, // Added this line
                           physics: const ClampingScrollPhysics(),
                           itemCount: tasks.length,
                           itemBuilder: (context, index) {

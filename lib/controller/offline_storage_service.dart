@@ -50,6 +50,11 @@ class OfflineStorageService {
     await saveTasks(tasks);
   }
 
+  Future<void> clearAllData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+
   Future<void> addToSyncQueue(TaskModel task, {String action = 'update'}) async {
     final prefs = await SharedPreferences.getInstance();
     final queueString = prefs.getString(_syncQueueKey) ?? '[]';
